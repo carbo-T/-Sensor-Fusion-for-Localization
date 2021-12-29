@@ -11,6 +11,18 @@
 namespace lidar_localization {
 
 class SICPRegistration: public RegistrationInterface {
+// struct SICP_params
+// {
+//     float p;
+//     float mu;
+//     float alpha;
+//     float max_mu;
+//     float max_icp;
+//     float max_outer;
+//     float max_inner;
+//     float stop;
+// };
+
   public:
     SICPRegistration(const YAML::Node& node);
 

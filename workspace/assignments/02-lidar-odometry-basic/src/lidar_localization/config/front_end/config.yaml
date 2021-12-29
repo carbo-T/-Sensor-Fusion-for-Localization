@@ -5,8 +5,8 @@ data_path: /workspace/assignments/02-lidar-odometry-basic/src/lidar_localization
 registration_method: SICP   # 选择点云匹配方法，目前支持：ICP, ICP_SVD, NDT, SICP
 
 # 局部地图
-key_frame_distance: 2.0 # 关键帧距离
-local_frame_num: 20
+key_frame_distance: 1.0 # 关键帧距离
+local_frame_num: 30
 local_map_filter: voxel_filter # 选择滑窗地图点云滤波方法，目前支持：voxel_filter
 
 # rviz显示
@@ -20,7 +20,7 @@ voxel_filter:
     local_map:
         leaf_size: [0.6, 0.6, 0.6]
     frame:
-        leaf_size: [1.3, 1.3, 1.3]
+        leaf_size: [1.2, 1.2, 1.2]
     display:
         leaf_size: [0.5, 0.5, 0.5]
 
@@ -35,18 +35,18 @@ ICP_SVD:
     max_corr_dist : 1.2
     trans_eps : 0.01
     euc_fitness_eps : 0.36
-    max_iter : 10
+    max_iter : 30
 NDT:
     res : 1.0
     step_size : 0.1
     trans_eps : 0.01
     max_iter : 30
 SICP:
-    p : 1.0
+    p : 0.5
     mu : 10.0
     alpha : 1.2
     max_mu : 1e5
-    max_icp : 100
+    max_icp : 200
     max_outer : 100
     max_inner : 1
-    stop : 1e-5
+    stop : 1e-2

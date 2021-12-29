@@ -15,21 +15,21 @@
 #include "lidar_localization/models/registration/sicp/scip_registration.hpp"
 
 namespace lidar_localization {
+SICP::Parameters g_sicp_params_;
 
 SICPRegistration::SICPRegistration(
     const YAML::Node& node
 ) {
     // parse params:
-    /*
-    params_.p = node['p'].as<float>();
-    params_.mu = node['mu'].as<float>();
-    params_.alpha = node['alpha'].as<float>();
-    params_.max_mu = node['max_mu'].as<float>();
-    params_.max_icp = node['max_icp'].as<int>();
-    params_.max_outer = node['max_outer'].as<int>();
-    params_.max_inner = node['max_inner'].as<int>();
-    params_.stop = node['stop'].as<float>();
-    */
+    g_sicp_params_.p = node["p"].as<float>();
+    g_sicp_params_.mu = node["mu"].as<float>();
+    g_sicp_params_.alpha = node["alpha"].as<float>();
+    g_sicp_params_.max_mu = node["max_mu"].as<float>();
+    g_sicp_params_.max_icp = node["max_icp"].as<int>();
+    g_sicp_params_.max_outer = node["max_outer"].as<int>();
+    g_sicp_params_.max_inner = node["max_inner"].as<int>();
+    g_sicp_params_.stop = node["stop"].as<float>();
+    
 }
 
 bool SICPRegistration::SetInputTarget(const CloudData::CLOUD_PTR& input_target) {
@@ -54,8 +54,30 @@ bool SICPRegistration::ScanMatch(
     // TODO: second option -- adapt existing implementation
     //
     // TODO: format inputs for SICP:
+    Eigen::Matrix3Xd X ( 3, input_target_->size() ); // source, transformed
+    Eigen::Matrix3Xd Y ( 3, transformed_input_source->size() ); // target
     
+    // init estimation:
+    transformation_.setIdentity();
+
+    for(int i = 0; i < input_target_->size(); i++)
+    {
+      X(0,i) = input_target_->points[i].x;
+      X(1,i) = input_target_->points[i].y;
+      X(2,i) = input_target_->points[i].z;
+    }
+    for(int i = 0; i < transformed_input_source->size(); i++)
+    {
+      Y(0,i) = transformed_input_source->points[i].x;
+      Y(1,i) = transformed_input_source->points[i].y;
+      Y(2,i) = transformed_input_source->points[i].z;
+    }
+    
+    // std::cout<<"sicp registration start, source: "<<transformed_input_source->size()<<std::endl;
     // TODO: SICP registration:
+    Eigen::Affine3d t_transform = SICP::point_to_point ( Y, X, g_sicp_params_ ); // sparse ICP
+    transformation_ = t_transform.matrix().cast<float>();
+    // std::cout<<"sicp registration get trans"<<std::endl;
 
     // set output:
     result_pose = transformation_ * predict_pose;

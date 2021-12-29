@@ -36,3 +36,7 @@ Log
 *.exe
 *.out
 *.app
+
+# path data
+*.pcd
+*.zip
