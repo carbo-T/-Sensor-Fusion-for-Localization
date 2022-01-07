@@ -560,17 +560,29 @@ void process()
 				kdtreeSurfFromMap->setInputCloud(laserCloudSurfFromMap);
 				// printf("build tree time %f ms \n", t_tree.toc());
 
+				// double t_my_params[6] = {0, 0, 0, 0, 0, 0};
+				// Eigen::Vector3d t_so3;
+				// t_so3 = Sophus::SO3d(q_w_curr).log();
+				// t_my_params[0] = t_w_curr.x();
+				// t_my_params[1] = t_w_curr.y();
+				// t_my_params[2] = t_w_curr.z();
+				// t_my_params[3] = t_so3.x();
+				// t_my_params[4] = t_so3.y();
+				// t_my_params[5] = t_so3.z();
 				for (int iterCount = 0; iterCount < 2; iterCount++)
 				{
 					//ceres::LossFunction *loss_function = NULL;
 					ceres::LossFunction *loss_function = new ceres::HuberLoss(0.1);
 					ceres::LocalParameterization *q_parameterization =
-						new ceres::EigenQuaternionParameterization();
+						// new ceres::EigenQuaternionParameterization();
+						new PoseSO3Parameterization();
 					ceres::Problem::Options problem_options;
 
 					ceres::Problem problem(problem_options);
 					problem.AddParameterBlock(parameters, 4, q_parameterization);
 					problem.AddParameterBlock(parameters + 4, 3);
+					// problem.AddParameterBlock(t_my_params, 3);
+					// problem.AddParameterBlock(t_my_params+3, 3);
 
 					TicToc t_data;
 					int corner_num = 0;
@@ -616,8 +628,10 @@ void process()
 								point_a = 0.1 * unit_direction + point_on_line;
 								point_b = -0.1 * unit_direction + point_on_line;
 
-								ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, point_a, point_b, 1.0);
-								problem.AddResidualBlock(cost_function, loss_function, parameters, parameters + 4);
+								// ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, point_a, point_b, 1.0);
+								// problem.AddResidualBlock(cost_function, loss_function, parameters, parameters + 4);
+								ceres::CostFunction *cost_function = LidarEdgeAnalyticFactor::Create(curr_point, point_a, point_b, 1.0);
+								problem.AddResidualBlock(cost_function, loss_function, parameters, parameters+4);
 								corner_num++;	
 							}							
 						}
@@ -681,8 +695,10 @@ void process()
 							Eigen::Vector3d curr_point(pointOri.x, pointOri.y, pointOri.z);
 							if (planeValid)
 							{
-								ceres::CostFunction *cost_function = LidarPlaneNormFactor::Create(curr_point, norm, negative_OA_dot_norm);
-								problem.AddResidualBlock(cost_function, loss_function, parameters, parameters + 4);
+								// ceres::CostFunction *cost_function = LidarPlaneNormFactor::Create(curr_point, norm, negative_OA_dot_norm);
+								// problem.AddResidualBlock(cost_function, loss_function, parameters, parameters + 4);
+								ceres::CostFunction *cost_function = LidarPlaneNormAnalyticFactor::Create(curr_point, norm, negative_OA_dot_norm);
+								problem.AddResidualBlock(cost_function, loss_function, parameters, parameters+4);
 								surf_num++;
 							}
 						}
@@ -719,13 +735,20 @@ void process()
 					options.gradient_check_relative_precision = 1e-4;
 					ceres::Solver::Summary summary;
 					ceres::Solve(options, &problem, &summary);
+					// std::cout<<summary.BriefReport()<<std::endl;
 					// printf("mapping solver time %f ms \n", t_solver.toc());
 
 					// printf("time %f \n", timeLaserOdometry);
 					// printf("corner factor num %d surf factor num %d\n", corner_num, surf_num);
-					// printf("result q %f %f %f %f result t %f %f %f\n", parameters[3], parameters[0], parameters[1], parameters[2],
-					//	   parameters[4], parameters[5], parameters[6]);
+					// printf("***************** \nresult q %f %f %f %f result t %f %f %f\n", parameters[3], parameters[0], parameters[1], parameters[2],
+					// 	   parameters[4], parameters[5], parameters[6]);
 				}
+				// // 优化结束后赋值到parameters
+				// t_w_curr.x() = t_my_params[0];
+				// t_w_curr.y() = t_my_params[1];
+				// t_w_curr.z() = t_my_params[2];
+				// q_w_curr = Eigen::Quaterniond(Sophus::SO3d::exp(Eigen::Vector3d(t_my_params[3], t_my_params[4], t_my_params[5])).matrix());
+				
 				// printf("mapping optimization time %f \n", t_opt.toc());
 			}
 			else

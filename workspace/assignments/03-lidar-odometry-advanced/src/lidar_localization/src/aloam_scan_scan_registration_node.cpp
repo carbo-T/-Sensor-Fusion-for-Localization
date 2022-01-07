@@ -274,6 +274,16 @@ int main(int argc, char **argv)
             }
             else
             {
+                // double t_my_params[6] = {0, 0, 0, 0, 0, 0};
+                // Eigen::Vector3d t_so3;
+                // t_so3 = Sophus::SO3d(q_last_curr).log();
+                // t_my_params[0] = t_last_curr.x();
+                // t_my_params[1] = t_last_curr.y();
+                // t_my_params[2] = t_last_curr.z();
+                // t_my_params[3] = t_so3.x();
+                // t_my_params[4] = t_so3.y();
+                // t_my_params[5] = t_so3.z();
+
                 int cornerPointsSharpNum = cornerPointsSharp->points.size();
                 int surfPointsFlatNum = surfPointsFlat->points.size();
 
@@ -286,18 +296,22 @@ int main(int argc, char **argv)
                     //ceres::LossFunction *loss_function = NULL;
                     ceres::LossFunction *loss_function = new ceres::HuberLoss(0.1);
                     ceres::LocalParameterization *q_parameterization =
-                        new ceres::EigenQuaternionParameterization();
+                        // new ceres::EigenQuaternionParameterization();
+                        new PoseSO3Parameterization();
                     ceres::Problem::Options problem_options;
 
                     ceres::Problem problem(problem_options);
                     problem.AddParameterBlock(para_q, 4, q_parameterization);
                     problem.AddParameterBlock(para_t, 3);
+                    // problem.AddParameterBlock(t_my_params, 3);
+                    // problem.AddParameterBlock(t_my_params+3, 3);
 
                     pcl::PointXYZI pointSel;
                     std::vector<int> pointSearchInd;
                     std::vector<float> pointSearchSqDis;
 
                     TicToc t_data;
+
                     // find correspondence for corner features
                     for (int i = 0; i < cornerPointsSharpNum; ++i)
                     {
@@ -380,8 +394,10 @@ int main(int argc, char **argv)
                                 s = (cornerPointsSharp->points[i].intensity - int(cornerPointsSharp->points[i].intensity)) / SCAN_PERIOD;
                             else
                                 s = 1.0;
-                            ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b, s);
-                            problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
+                            // ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b, s);
+                            // problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
+                            ceres::CostFunction *cost_function = LidarEdgeAnalyticFactor::Create(curr_point, last_point_a, last_point_b, s);
+							problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
                             corner_correspondence++;
                         }
                     }
@@ -478,8 +494,10 @@ int main(int argc, char **argv)
                                     s = (surfPointsFlat->points[i].intensity - int(surfPointsFlat->points[i].intensity)) / SCAN_PERIOD;
                                 else
                                     s = 1.0;
-                                ceres::CostFunction *cost_function = LidarPlaneFactor::Create(curr_point, last_point_a, last_point_b, last_point_c, s);
-                                problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
+                                // ceres::CostFunction *cost_function = LidarPlaneFactor::Create(curr_point, last_point_a, last_point_b, last_point_c, s);
+                                // problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
+                                ceres::CostFunction *cost_function = LidarPlaneAnalyticFactor::Create(curr_point, last_point_c, last_point_b, last_point_a, s);
+								problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
                                 plane_correspondence++;
                             }
                         }
@@ -500,7 +518,14 @@ int main(int argc, char **argv)
                     options.minimizer_progress_to_stdout = false;
                     ceres::Solver::Summary summary;
                     ceres::Solve(options, &problem, &summary);
+                    // std::cout<<summary.FullReport()<<std::endl;
                     // printf("solver time %f ms \n", t_solver.toc());
+
+                    // printf("params: %.3f %.3f %.3f %.3f %.3f %.3f \n", t_my_params[0], t_my_params[1], t_my_params[2], t_my_params[3], t_my_params[4], t_my_params[5]);
+                    // t_last_curr.x() = t_my_params[0];
+                    // t_last_curr.y() = t_my_params[1];
+                    // t_last_curr.z() = t_my_params[2];
+                    // q_last_curr = Eigen::Quaterniond(Sophus::SO3d::exp(Eigen::Vector3d(t_my_params[3], t_my_params[4], t_my_params[5])).matrix());
 
                     std::cout << "\tInput. " << count << " : " << cornerPointsSharp->size() << " / "  << laserCloudCornerLast->size() << " / "  << surfPointsFlat->size() << " / "  << laserCloudSurfLast->size() << " / " << std::endl;
                     std::cout << "\tEstimation. " << count << ": num edges " << corner_correspondence << ", num planes " << plane_correspondence << std::endl;
@@ -514,6 +539,12 @@ int main(int argc, char **argv)
                     }
                 }
                 // printf("optimization twice time %f \n", t_opt.toc());
+
+                // // 优化结束后赋值到parameters
+				// t_last_curr.x() = t_my_params[0];
+				// t_last_curr.y() = t_my_params[1];
+				// t_last_curr.z() = t_my_params[2];
+				// q_last_curr = Eigen::Quaterniond(Sophus::SO3d::exp(Eigen::Vector3d(t_my_params[3], t_my_params[4], t_my_params[5])).matrix());
 
                 t_w_curr = t_w_curr + q_w_curr * t_last_curr;
                 q_w_curr = q_w_curr * q_last_curr;
