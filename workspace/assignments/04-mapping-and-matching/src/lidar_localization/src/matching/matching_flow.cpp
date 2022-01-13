@@ -111,11 +111,43 @@ bool MatchingFlow::UpdateMatching() {
         // Hints: You can use SetGNSSPose & SetScanContextPose from matching.hpp
         //
 
-        // naive implementation:
-        Eigen::Matrix4f init_pose = Eigen::Matrix4f::Identity();
+        // Eigen::Matrix4f init_pose = Eigen::Matrix4f::Identity();
+        // init_pose(0,0) = 0.477284;
+        // init_pose(0,1) = -0.878556;
+        // init_pose(0,2) = 0.0184031;
+        // init_pose(0,3) = 0.681433;
+        // init_pose(1,0) = 0.878745;
+        // init_pose(1,1) = 0.477243;
+        // init_pose(1,2) = -0.00686302;
+        // init_pose(1,3) = 0.552625;
+        // init_pose(2,0) = -0.00275319;
+        // init_pose(2,1) = 0.0194472;
+        // init_pose(2,2) = 0.999807;
+        // init_pose(2,3) = 0.791128;
+
+        // 利用gnss初始化
+        if(!matching_ptr_->HasInited())
+        {
+            matching_ptr_->SetGNSSPose(current_gnss_data_.pose);
+            LOG(INFO) << "=========== origin gps pose ============\n"<<current_gnss_data_.pose;
+        }else{
+            matching_ptr_->SetInited();
+        }
+
+        // 使用scan context全局搜索
+        if(!matching_ptr_->HasInited())
+        {
+            bool res = matching_ptr_->SetScanContextPose(current_cloud_data_);
+            LOG(INFO) << "=========== origin scan context ============\n"<<(res?"found":"not found");
+        }else{
+            matching_ptr_->SetInited();
+        }
         
-        matching_ptr_->SetInitPose(init_pose);
-        matching_ptr_->SetInited();
+        // // naive implementation:
+        // Eigen::Matrix4f init_pose = Eigen::Matrix4f::Identity();
+        
+        // matching_ptr_->SetInitPose(init_pose);
+        // matching_ptr_->SetInited();
     }
 
     return matching_ptr_->Update(current_cloud_data_, laser_odometry_);
