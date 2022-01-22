@@ -39,6 +39,127 @@ using namespace imu_tk;
 using namespace Eigen;
 using namespace std;
 
+// Analytic res
+template <typename _T1> struct AnalyticMultiPosAccResidual : public ceres::SizedCostFunction<1,9>
+{
+  public:
+  AnalyticMultiPosAccResidual( 
+    const _T1 &g_mag, 
+    const Eigen::Matrix< _T1, 3 , 1> &sample 
+  ) : g_mag_(g_mag), sample_(sample){}
+  virtual ~AnalyticMultiPosAccResidual(){}
+
+  virtual bool Evaluate(double const* const* parameters,
+                        double* residuals,
+                        double** jacobians)const
+  {
+    Eigen::Matrix<double, 3, 1> raw_samp( 
+      double(sample_(0)), 
+      double(sample_(1)), 
+      double(sample_(2)) 
+    );
+
+    /* Apply undistortion transform to accel measurements
+         mis_mat_ <<  _T(1)   , -mis_yz  ,  mis_zy  ,
+                       mis_xz ,  _T(1)   , -mis_zx  ,  
+                      -mis_xy ,  mis_yx  ,  _T(1)   ;
+              
+       scale_mat_ <<   s_x  ,   _T(0)  ,  _T(0) ,
+                      _T(0) ,    s_y   ,  _T(0) ,  
+                      _T(0) ,   _T(0)  ,   s_z  ;
+                    
+        bias_vec_ <<  b_x , b_y , b_z ;
+
+        define:
+           ms_mat_ = mis_mat_*scale_mat_
+
+        then the undistortion transform:
+                X' = T*K*(X - B)
+
+        can be implemented as:
+
+       unbias_data = ms_mat_*(raw_data - bias_vec_)
+
+     * assume body frame same as accelerometer frame, 
+     * so bottom left params in the misalignment matris are set to zero */
+    CalibratedTriad_<double> calib_triad( 
+      //
+      // TODO: implement lower triad model here
+      //
+      // 转成下三角，其中由于该类内部做了反号，(2,0)外部需要反号保证参数一致
+      // S 安装误差， K 标度因数，b 零偏
+      double(0), double(0), double(0),
+      //    S_ayx,   Sazx,    Sazy
+      -parameters[0][0], parameters[0][1], -parameters[0][2],
+      // !!!该类中标度系数与ppt中互为倒数，为与求导对应，此处必须取倒数
+      //    K_ax,    K_ay,    K_az:
+      1.0/parameters[0][3], 1.0/parameters[0][4], 1.0/parameters[0][5], 
+      //    b_ax,    b_ay,    b_az:
+      parameters[0][6], parameters[0][7], parameters[0][8] 
+    );
+    
+    // apply undistortion transform:
+    // 计算真值a
+    Eigen::Matrix< double, 3 , 1> calib_samp = calib_triad.unbiasNormalize( raw_samp );
+    // // 验证a计算正确性
+    // Eigen::Matrix< double, 3 , 1> my_samp;
+    // my_samp(0,0) = parameters[0][3]*(raw_samp.x()-parameters[0][6]);
+    // my_samp(1,0) = -parameters[0][0]*parameters[0][3]*(raw_samp.x()-parameters[0][6])+
+    //                 parameters[0][4]*(raw_samp.y()-parameters[0][7]);
+    // my_samp(2,0) = -parameters[0][1]*parameters[0][3]*(raw_samp.x()-parameters[0][6])+
+    //                -parameters[0][2]*parameters[0][4]*(raw_samp.y()-parameters[0][7])+
+    //                 parameters[0][5]*(raw_samp.z()-parameters[0][8]);
+    // // std::cout<<"--------------\ncalc samp: "<<calib_samp.transpose()<<"\nmy samp: "<<my_samp.transpose()<<std::endl;
+    
+    // residuals[0] = double (g_mag_*g_mag_) - calib_samp.squaredNorm();
+    residuals[0] = double (g_mag_) - calib_samp.norm();
+
+    if(!jacobians || !jacobians[0]) return true;
+
+    // 计算雅可比，分为两部分
+    //J=2a^T*[matrix of 3*9]
+    // Eigen::Matrix<double, 1, 3> d_fa = -2.0 * calib_samp.transpose();
+    Eigen::Matrix<double, 1, 3> d_fa = - calib_samp.transpose() / calib_samp.norm();
+    Eigen::Matrix<double, 3, 9> d_a_theta;
+    d_a_theta.setZero();
+    // S
+    d_a_theta(1,0) = -(raw_samp.x()-parameters[0][6])/parameters[0][3];
+    d_a_theta(2,1) = -(raw_samp.x()-parameters[0][6])/parameters[0][3];
+    d_a_theta(2,2) = -(raw_samp.y()-parameters[0][7])/parameters[0][4];
+    // K
+    d_a_theta(0,3) = -(raw_samp.x()-parameters[0][6])/(parameters[0][3]*parameters[0][3]);
+    d_a_theta(1,3) = parameters[0][0]*(raw_samp.x()-parameters[0][6])/(parameters[0][3]*parameters[0][3]);
+    d_a_theta(2,3) = parameters[0][1]*(raw_samp.x()-parameters[0][6])/(parameters[0][3]*parameters[0][3]);
+    d_a_theta(1,4) = -(raw_samp.y()-parameters[0][7])/(parameters[0][4]*parameters[0][4]);
+    d_a_theta(2,4) = parameters[0][2]*(raw_samp.y()-parameters[0][7])/(parameters[0][4]*parameters[0][4]);
+    d_a_theta(2,5) = -(raw_samp.z()-parameters[0][8])/(parameters[0][5]*parameters[0][5]);
+    // B
+    d_a_theta(0,6) = -1.0/parameters[0][3];
+    d_a_theta(1,6) = parameters[0][0]/parameters[0][3];
+    d_a_theta(2,6) = parameters[0][1]/parameters[0][3];
+    d_a_theta(1,7) = -1.0/parameters[0][4];
+    d_a_theta(2,7) = parameters[0][2]/parameters[0][4];
+    d_a_theta(2,8) = -1.0/parameters[0][5];
+
+    Eigen::Map<Eigen::Matrix<double, 1, 9>> J_d_f_theta(jacobians[0]);
+    J_d_f_theta.setZero();
+    J_d_f_theta = d_fa * d_a_theta;
+    // std::cout<<J_d_f_theta<<std::endl;
+
+    return true;
+  }
+
+    
+  static ceres::CostFunction* Create ( const _T1 &g_mag, const Eigen::Matrix< _T1, 3 , 1> &sample )
+  {
+    return ( new AnalyticMultiPosAccResidual<_T1>( g_mag, sample ) );
+  }
+  
+  const _T1 g_mag_;
+  const Eigen::Matrix< _T1, 3 , 1> sample_;
+};
+
+
 template <typename _T1> struct MultiPosAccResidual
 {
   MultiPosAccResidual( 
@@ -84,13 +205,17 @@ template <typename _T1> struct MultiPosAccResidual
       //
       // TODO: implement lower triad model here
       //
+      // 转成下三角，其中由于该类内部做了反号，(2,0)外部需要反号保证参数一致
       // mis_yz, mis_zy, mis_zx:
-      params[0], params[1], params[2],
-      // mis_xz, mis_xy, mis_yx:
       _T2(0), _T2(0), _T2(0),
+
+      // params[0], params[1], params[2],
+
+      // mis_xz, mis_xy, mis_yx:
+      -params[0], params[1], -params[2],
       //    s_x,    s_y,    s_z:
       params[3], params[4], params[5], 
-      //    b_x,    b_y,    b_z: 
+      //    b_x,    b_y,    b_z:
       params[6], params[7], params[8] 
     );
     
@@ -98,6 +223,8 @@ template <typename _T1> struct MultiPosAccResidual
     Eigen::Matrix< _T2, 3 , 1> calib_samp = calib_triad.unbiasNormalize( raw_samp );
     
     residuals[0] = _T2 (g_mag_) - calib_samp.norm();
+
+    // std::cout<<calib_samp<<std::endl;
 
     return true;
   }
@@ -218,9 +345,13 @@ bool MultiPosCalibration_<_T>::calibrateAcc(
     //
     // TODO: implement lower triad model here
     //
-    acc_calib_params[0] = init_acc_calib_.misYZ();
-    acc_calib_params[1] = init_acc_calib_.misZY();
-    acc_calib_params[2] = init_acc_calib_.misZX();
+    // acc_calib_params[0] = init_acc_calib_.misYZ();
+    // acc_calib_params[1] = init_acc_calib_.misZY();
+    // acc_calib_params[2] = init_acc_calib_.misZX();
+    // 改为下三角
+    acc_calib_params[0] = init_acc_calib_.misXZ();//(1,0)
+    acc_calib_params[1] = -init_acc_calib_.misXY();//由于此处值为-(2,0),需要反号
+    acc_calib_params[2] = init_acc_calib_.misYX();//(2,1)
     
     acc_calib_params[3] = init_acc_calib_.scaleX();
     acc_calib_params[4] = init_acc_calib_.scaleY();
@@ -253,7 +384,11 @@ bool MultiPosCalibration_<_T>::calibrateAcc(
     ceres::Problem problem;
     for( int i = 0; i < static_samples.size(); i++)
     {
-      ceres::CostFunction* cost_function = MultiPosAccResidual<_T>::Create ( 
+      // changed by yct
+      // ceres::CostFunction* cost_function = MultiPosAccResidual<_T>::Create ( 
+      //   g_mag_, static_samples[i].data() 
+      // );
+      ceres::CostFunction* cost_function = AnalyticMultiPosAccResidual<_T>::Create ( 
         g_mag_, static_samples[i].data() 
       );
 
@@ -278,6 +413,7 @@ bool MultiPosCalibration_<_T>::calibrateAcc(
       min_cost_calib_params = acc_calib_params;
     } 
     cout << "residual " << summary.final_cost << endl;
+    // cout<<summary.FullReport()<<endl;
   }
   
   if( min_cost_th < 0 )
@@ -291,10 +427,12 @@ bool MultiPosCalibration_<_T>::calibrateAcc(
     //
     // TODO: implement lower triad model here
     // 
+    // 修改为下三角，模型内已添加负号，此处不用添加
+    0,0,0,
     min_cost_calib_params[0],
     min_cost_calib_params[1],
     min_cost_calib_params[2],
-    0,0,0,
+    
     min_cost_calib_params[3],
     min_cost_calib_params[4],
     min_cost_calib_params[5],
