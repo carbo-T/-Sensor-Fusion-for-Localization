@@ -1,5 +1,5 @@
 # motion def:
-motion_file: allan_variance_analysis.csv
+motion_file: demo.csv
 # IMU params:
 imu: 1
 # sample frequency of simulated GNSS/IMU data:
@@ -8,6 +8,7 @@ sample_frequency:
     gps: 10.0
 # topic name:
 topic_name: /sim/sensor/imu
+topic_name_gt: /sim/sensor/gt
 # output rosbag path:
 output_path: /workspace/data/gnss_ins_sim/allan_variance_analysis
 # output name:

@@ -6,6 +6,9 @@
 #ifndef IMU_INTEGRATION_ACTIVITY_HPP_
 #define IMU_INTEGRATION_ACTIVITY_HPP_
 
+#include <iostream>
+#include <fstream>
+
 // common:
 #include <ros/ros.h>
 
@@ -128,6 +131,9 @@ class Activity {
     Eigen::Vector3d vel_ = Eigen::Vector3d::Zero();
 
     nav_msgs::Odometry message_odom_;
+
+    // added by yct
+    std::ofstream ground_truth, estimated_traj;
 };
 
 } // namespace estimator

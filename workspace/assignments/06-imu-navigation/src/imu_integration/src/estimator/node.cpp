@@ -4,6 +4,7 @@
 #include <rosbag/bag.h>
 
 #include "imu_integration/estimator/activity.hpp"
+#include <iostream>
 
 int main(int argc, char** argv) {
     std::string node_name{"imu_integration_estimator_node"};
@@ -12,7 +13,7 @@ int main(int argc, char** argv) {
     imu_integration::estimator::Activity activity;
 
     activity.Init();
-    
+
     // 100 Hz:
     ros::Rate loop_rate(100);
     while (ros::ok())

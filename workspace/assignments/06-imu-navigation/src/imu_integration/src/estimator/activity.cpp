@@ -8,6 +8,7 @@
 #include "imu_integration/estimator/activity.hpp"
 #include "glog/logging.h"
 
+// #define MID_VALUE
 namespace imu_integration {
 
 namespace estimator {
@@ -59,6 +60,14 @@ void Activity::Init(void) {
 
     odom_ground_truth_sub_ptr = std::make_shared<OdomSubscriber>(private_nh_, odom_config_.topic_name.ground_truth, 1000000);
     odom_estimation_pub_ = private_nh_.advertise<nav_msgs::Odometry>(odom_config_.topic_name.estimation, 500);
+
+    std::string filename = __FILE__;
+    ground_truth.open(filename.substr(0, filename.find_last_of('/'))+"/ground_truth.txt", std::ios::out);
+    estimated_traj.open(filename.substr(0, filename.find_last_of('/'))+"/estimated_traj.txt", std::ios::out);
+    if(!ground_truth.is_open() || !estimated_traj.is_open())
+    {
+        std::cout<<"open file to save traj failed!!!"<<std::endl;
+    }
 }
 
 bool Activity::Run(void) {
@@ -81,8 +90,9 @@ bool Activity::ReadData(void) {
     if (static_cast<size_t>(0) == imu_data_buff_.size())
         return false;
 
-    if (!initialized_) {
+    // changed by yct
         odom_ground_truth_sub_ptr->ParseData(odom_data_buff_);
+    if (!initialized_) {
 
         if (static_cast<size_t>(0) == odom_data_buff_.size())
             return false;
@@ -106,9 +116,12 @@ bool Activity::HasData(void) {
 }
 
 bool Activity::UpdatePose(void) {
+    // static size_t odom_index = 0;
     if (!initialized_) {
         // use the latest measurement for initialization:
+        // stamped pos & vel
         OdomData &odom_data = odom_data_buff_.back();
+        // stamped lin_acc & ang_vel
         IMUData imu_data = imu_data_buff_.back();
 
         pose_ = odom_data.pose;
@@ -118,24 +131,82 @@ bool Activity::UpdatePose(void) {
 
         odom_data_buff_.clear();
         imu_data_buff_.clear();
+        // odom_index = 0;
 
         // keep the latest IMU measurement for mid-value integration:
         imu_data_buff_.push_back(imu_data);
+        odom_data_buff_.push_back(odom_data);
     } else {
+        static int save_line_count=0;
         //
         // TODO: implement your estimation here
-        //
+        // 初始化后队列超过三个元素才会到此
         // get deltas:
+        Eigen::Vector3d t_angular_delta=Eigen::Vector3d::Zero();
+        if(!GetAngularDelta(1, 0, t_angular_delta))
+        {
+            return false;
+        }
 
         // update orientation:
+        Eigen::Matrix3d t_R_curr=Eigen::Matrix3d::Identity(), t_R_prev=Eigen::Matrix3d::Identity();
+        // 存在角度差异再更新旋转矩阵
+        if(t_angular_delta.norm()>0){
+            UpdateOrientation(t_angular_delta, t_R_curr, t_R_prev);
+        }
 
         // get velocity delta:
+        double delta_t=0.0;
+        Eigen::Vector3d velocity_delta=Eigen::Vector3d::Zero();
+        if(!GetVelocityDelta(1, 0, t_R_curr, t_R_prev, delta_t, velocity_delta))
+        {
+            return false;
+        }
 
         // update position:
+        UpdatePosition(delta_t, velocity_delta);
+
+        // estimate difference
+        // std::cout<<imu_data_buff_.size()<<", "<<odom_data_buff_.size()<<std::endl;
+        if (odom_data_buff_.size() > 0 && ground_truth.is_open() && estimated_traj.is_open())
+        {
+            if (save_line_count > 250000)
+            {
+                std::cout << "------------------ 2500 lines saved!!! --------------------" << std::endl;
+            }
+            else
+            {
+                // Eigen::Vector3d pos_gt = odom_data_buff_.at(0).pose.block<3, 1>(0, 3);
+                // Eigen::Vector3d pos_est = pose_.block<3, 1>(0, 3);
+
+                for (int i = 0; i < 3; ++i)
+                {
+                    for (int j = 0; j < 4; ++j)
+                    {
+                        estimated_traj << pose_(i, j);
+                        ground_truth << odom_data_buff_.at(0).pose(i, j);
+                        if (i == 2 && j == 3)
+                        {
+                            ground_truth << std::endl;
+                            estimated_traj << std::endl;
+                        }
+                        else
+                        {
+                            ground_truth << " ";
+                            estimated_traj << " ";
+                        }
+                    }
+                }
+                save_line_count++;
+
+                odom_data_buff_.pop_front();
+            }
+        }
 
         // move forward -- 
         // NOTE: this is NOT fixed. you should update your buffer according to the method of your choice:
         imu_data_buff_.pop_front();
+        // odom_index++;
     }
     
     return true;
@@ -223,7 +294,13 @@ bool Activity::GetAngularDelta(
     Eigen::Vector3d angular_vel_curr = GetUnbiasedAngularVel(imu_data_curr.angular_velocity);
     Eigen::Vector3d angular_vel_prev = GetUnbiasedAngularVel(imu_data_prev.angular_velocity);
 
+    #ifdef MID_VALUE
+    // 姿态差异中值法
     angular_delta = 0.5*delta_t*(angular_vel_curr + angular_vel_prev);
+    #else
+    // 姿态差异欧拉法
+    angular_delta = delta_t*angular_vel_prev;
+    #endif
 
     return true;
 }
@@ -257,10 +334,16 @@ bool Activity::GetVelocityDelta(
 
     delta_t = imu_data_curr.time - imu_data_prev.time;
 
+    // std::cout<<(imu_data_curr.linear_acceleration).transpose()<<" ??? \n"<<R_curr<<std::endl;
+
     Eigen::Vector3d linear_acc_curr = GetUnbiasedLinearAcc(imu_data_curr.linear_acceleration, R_curr);
     Eigen::Vector3d linear_acc_prev = GetUnbiasedLinearAcc(imu_data_prev.linear_acceleration, R_prev);
     
+    #ifdef MID_VALUE
     velocity_delta = 0.5*delta_t*(linear_acc_curr + linear_acc_prev);
+    #else
+    velocity_delta = delta_t * linear_acc_prev;
+    #endif
 
     return true;
 }

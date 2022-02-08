@@ -20,6 +20,10 @@ def get_gnss_ins_sim(motion_def_file, fs_imu, fs_gps):
     '''
     Generate simulated GNSS/IMU data using specified trajectory.
     '''
+    # set  origin  x y z
+    origin_x =  2849886.61825
+    origin_y =  -4656214.27294
+    origin_z =  -3287190.60046
     # set IMU model:
     D2R = math.pi/180.0
     # imu_err = 'low-accuracy'
@@ -53,8 +57,13 @@ def get_gnss_ins_sim(motion_def_file, fs_imu, fs_gps):
         'mag_hi': np.array([10.0, 10.0, 10.0])*0.0,
         'mag_std': np.array([0.1, 0.1, 0.1])
     }
+    # gps_err = {'stdp': np.array([5.0, 5.0, 7.0]) * 0.001,
+    #            'stdv': np.array([0.05, 0.05, 0.05]) * 0.001}
+    # odo_err = {'scale': 0.9999,
+    #            'stdv': 0.001}
     # generate GPS and magnetometer data:
     imu = imu_model.IMU(accuracy=imu_err, axis=9, gps=True)
+    # , gps_opt=gps_err,odo=True, odo_opt=odo_err)
 
     # init simulation:
     sim = ins_sim.Sim(
@@ -69,6 +78,9 @@ def get_gnss_ins_sim(motion_def_file, fs_imu, fs_gps):
     
     # run:
     sim.run(1)
+    # sim.results('/workspace/assignments/06-imu-navigation/src/gnss_ins_sim/launch/sim_data/')
+
+    step_size = 1.0 / fs_imu
 
     # get simulated data:
     rospy.logwarn(
@@ -77,29 +89,51 @@ def get_gnss_ins_sim(motion_def_file, fs_imu, fs_gps):
         )
     )
 
-    # imu measurements:
-    step_size = 1.0 / fs_imu
-    for i, (gyro, accel) in enumerate(
+    for i, (gyro, accel, ref_q, ref_pos, ref_vel) in enumerate(
         zip(
-            # a. gyro
+            # a. gyro:
             sim.dmgr.get_data_all('gyro').data[0], 
-            # b. accel
-            sim.dmgr.get_data_all('accel').data[0]
+            # b. accel:
+            sim.dmgr.get_data_all('accel').data[0],
+            # # a. gyro:
+            # sim.dmgr.get_data_all('ref_gyro').data, 
+            # # b. accel:
+            # sim.dmgr.get_data_all('ref_accel').data,
+            # c. gt_pose:
+            sim.dmgr.get_data_all('ref_att_quat').data,                # groundtruth
+            sim.dmgr.get_data_all('ref_pos').data,
+            # d. true_vel :
+            sim.dmgr.get_data_all('ref_vel').data
         )
-    ):
+    ):  
         yield {
             'stamp': i * step_size,
-            'data': {
-                # a. gyro:
-                'gyro_x': gyro[0],
-                'gyro_y': gyro[1],
-                'gyro_z': gyro[2],
-                # b. accel:
-                'accel_x': accel[0],
-                'accel_y': accel[1],
-                'accel_z': accel[2]
+             'data': {
+                    # a. gyro:
+                    'gyro_x': gyro[0],
+                    'gyro_y': gyro[1],
+                    'gyro_z': gyro[2],
+                    # b. accel:
+                    'accel_x': accel[0],
+                    'accel_y': accel[1],
+                    'accel_z': accel[2],
+                    # c. true orientation:
+                    'gt_quat_w': ref_q[0],
+                    'gt_quat_x':  ref_q[1],
+                    'gt_quat_y':  ref_q[2],
+                    'gt_quat_z':  ref_q[3],
+                    # d. true position:
+                    'gt_pos_x': ref_pos[0]  + origin_x,
+                    'gt_pos_y': ref_pos[1]  + origin_y,
+                    'gt_pos_z': ref_pos[2]  + origin_z,
+                    # d. true velocity:
+                    'gt_vel_x': ref_vel[0],
+                    'gt_vel_y': ref_vel[1],
+                    'gt_vel_z': ref_vel[2]
             }
         }
+    sim.results()
+    sim.plot(['ref_pos', 'ref_vel'], opt={'ref_pos': '3d'})
 
 
 def gnss_ins_sim_recorder():
@@ -114,6 +148,8 @@ def gnss_ins_sim_recorder():
     sample_freq_imu = rospy.get_param('/gnss_ins_sim_recorder_node/sample_frequency/imu')
     sample_freq_gps = rospy.get_param('/gnss_ins_sim_recorder_node/sample_frequency/gps')
     topic_name_imu = rospy.get_param('/gnss_ins_sim_recorder_node/topic_name')
+    topic_name_gt = rospy.get_param('/gnss_ins_sim_recorder_node/topic_name_gt')
+
     rosbag_output_path = rospy.get_param('/gnss_ins_sim_recorder_node/output_path')
     rosbag_output_name = rospy.get_param('/gnss_ins_sim_recorder_node/output_name')
 
@@ -155,8 +191,30 @@ def gnss_ins_sim_recorder():
             msg.linear_acceleration.y = measurement['data']['accel_y']
             msg.linear_acceleration.z = measurement['data']['accel_z']
 
+            # print(measurement['data'])
             # write:
             bag.write(topic_name_imu, msg, msg.header.stamp)
+
+            # add odom
+            msg_odom = Odometry()
+            # set header
+            msg_odom.header.frame_id = 'inertial'
+            msg_odom.header.stamp = timestamp_start + rospy.Duration.from_sec(measurement['stamp'])
+            # set pos
+            msg_odom.pose.pose.position.x = measurement['data']['gt_pos_x']
+            msg_odom.pose.pose.position.y = measurement['data']['gt_pos_y']
+            msg_odom.pose.pose.position.z = measurement['data']['gt_pos_z']
+            # set orientation
+            msg_odom.pose.pose.orientation.x = measurement['data']['gt_quat_x']
+            msg_odom.pose.pose.orientation.y = measurement['data']['gt_quat_y']
+            msg_odom.pose.pose.orientation.z = measurement['data']['gt_quat_z']
+            msg_odom.pose.pose.orientation.w = measurement['data']['gt_quat_w']
+            # set vel
+            msg_odom.twist.twist.linear.x = measurement['data']['gt_vel_x']
+            msg_odom.twist.twist.linear.y = measurement['data']['gt_vel_y']
+            msg_odom.twist.twist.linear.z = measurement['data']['gt_vel_z']
+            # save odom
+            bag.write(topic_name_gt, msg_odom, msg_odom.header.stamp)
 
 if __name__ == '__main__':
     try:
