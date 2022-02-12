@@ -204,7 +204,8 @@ bool DataPretreatFlow::PublishData() {
     // this synced odometry has the following info:
     //
     // a. lidar frame's pose in map
-    // b. lidar frame's velocity 
+    // b. lidar frame's velocity
+    // gnss_pose_.block<3, 1>(0, 3) += Eigen::Vector3f(15.0f, 18.0f, 0.7f);
     gnss_pub_ptr_->Publish(gnss_pose_, current_velocity_data_, current_cloud_data_.time);
 
     

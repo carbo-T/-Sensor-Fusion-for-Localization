@@ -142,8 +142,9 @@ bool KITTIFilteringFlow::SaveOdometry(void) {
     const Eigen::Vector3f &position_lidar =
         trajectory.lidar_.at(i).block<3, 1>(0, 3);
 
+    // 偏差过大不保存
     if ((position_ref - position_lidar).norm() > 3.0) {
-      continue;
+      // continue;
     }
 
     SavePose(trajectory.fused_.at(i), fused_odom_ofs);

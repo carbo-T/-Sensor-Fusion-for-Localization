@@ -74,23 +74,27 @@ error_state_kalman_filter:
         # latitude:
         latitude:   48.9827703173
     covariance:
+        # 先验
         prior:
             pos: 1.0e-6
             vel: 1.0e-6
             ori: 1.0e-6
             epsilon: 1.0e-6
             delta: 1.0e-6
+        # 预测
         process:
-            gyro: 1.0e-4
-            accel: 2.5e-3
-            bias_accel: 2.5e-3
-            bias_gyro: 1.0e-4
+            gyro: 1.0e-5
+            accel: 2.5e-4
+            bias_accel: 2.5e-4
+            bias_gyro: 1.0e-6
+        # 观测，激光里程计
         measurement:
             pose:
-                pos: 1.0e-4
+                pos: 1.0e-3
                 ori: 1.0e-4
             pos: 1.0e-4
             vel: 2.5e-3
+    # 运动约束，未查到使用
     motion_constraint: 
         activated: true
         w_b_thresh: 0.13

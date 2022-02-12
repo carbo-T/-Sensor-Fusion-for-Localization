@@ -84,6 +84,7 @@ private:
   // indices:
   static constexpr int kDimState{15};
 
+  // 误差维度15维，（位置、速度、朝向、加速度、角速度）*3
   static constexpr int kIndexErrorPos{0};
   static constexpr int kIndexErrorVel{3};
   static constexpr int kIndexErrorOri{6};
