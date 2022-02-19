@@ -16,6 +16,8 @@
 
 namespace lidar_localization {
 
+// std::ofstream vel_out;
+
 KITTIFilteringFlow::KITTIFilteringFlow(
     ros::NodeHandle& nh
 ) {
@@ -49,6 +51,12 @@ KITTIFilteringFlow::KITTIFilteringFlow(
     laser_tf_pub_ptr_ = std::make_shared<TFBroadCaster>("/map", "/vehicle_link");
 
     filtering_ptr_ = std::make_shared<KITTIFiltering>();
+
+    // vel_out.open("/workspace/assignments/08-filtering-advanced/src/lidar_localization/slam_data/vel/vel.txt", std::ios::out);
+    // if(!vel_out.is_open())
+    // {
+    //     LOG(WARNING) <<"cannot open file to save velocity.";
+    // }
 }
 
 bool KITTIFilteringFlow::Run() {
@@ -134,9 +142,9 @@ bool KITTIFilteringFlow::SaveOdometry(void) {
         const Eigen::Vector3f &position_ref = current_gnss_data_.pose.block<3, 1>(0, 3);
         const Eigen::Vector3f &position_lidar = trajectory.lidar_.at(i).block<3, 1>(0, 3);
 
-        if ( (position_ref - position_lidar).norm() > 3.0 ) {
-            continue;
-        }
+        // if ( (position_ref - position_lidar).norm() > 3.0 ) {
+        //     continue;
+        // }
 
         SavePose(trajectory.fused_.at(i), fused_odom_ofs);
         SavePose(trajectory.lidar_.at(i), laser_odom_ofs);
@@ -326,6 +334,12 @@ bool KITTIFilteringFlow::PublishFusionOdom() {
     laser_tf_pub_ptr_->SendTransform(fused_pose_, current_imu_raw_data_.time);
     // b. publish fusion odometry:
     fused_odom_pub_ptr_->Publish(fused_pose_, fused_vel_, current_imu_raw_data_.time);
+
+    // // added by yct, 保存vel
+    // if(vel_out.is_open())
+    // {
+    //     vel_out << fused_vel_.x() << ", " << fused_vel_.y() << ", " << fused_vel_.z() << std::endl;
+    // }
 
     return true;
 }

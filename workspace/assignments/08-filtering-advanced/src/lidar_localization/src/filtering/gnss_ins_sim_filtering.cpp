@@ -71,6 +71,7 @@ bool GNSSINSSimFiltering::Correct(
     current_measurement_.B_b = pos_vel_mag_data.mag.cast<double>();
 
     if (
+        // position_velocity
         kalman_filter_ptr_->Correct(
             imu_data,
             CONFIG.FUSION_STRATEGY, current_measurement_
@@ -166,6 +167,7 @@ bool GNSSINSSimFiltering::InitFusion(const YAML::Node& config_node) {
     std::cout << "\tGNSS-INS-Sim Localization Fusion Strategy: " << fusion_strategy << std::endl;
 
     // set up fusion method:
+    CONFIG.FUSION_METHOD = config_node["fusion_method"].as<std::string>();
     if (CONFIG.FUSION_METHOD == "error_state_kalman_filter") {
         kalman_filter_ptr_ = std::make_shared<ErrorStateKalmanFilter>(config_node[CONFIG.FUSION_METHOD]);
     } else {

@@ -9,11 +9,11 @@ fusion_strategy: position_velocity
 error_state_kalman_filter:
     earth:
         # gravity can be calculated from https://www.sensorsone.com/local-gravity-calculator/ using latitude and height:
-        gravity_magnitude: 9.80943
+        gravity_magnitude: -9.7942164704
         # rotation speed, rad/s:
         rotation_speed: 7.292115e-5
         # latitude:
-        latitude:   48.9827703173
+        latitude:   31.224361
     covariance:
         prior:
             pos: 1.0e-6
@@ -30,7 +30,9 @@ error_state_kalman_filter:
             pose:
                 pos: 1.0e-4
                 ori: 1.0e-4
+            # 0.5
             pos: 1.0e-4
+            # 0.05
             vel: 2.5e-3
     motion_constraint: 
         activated: true
