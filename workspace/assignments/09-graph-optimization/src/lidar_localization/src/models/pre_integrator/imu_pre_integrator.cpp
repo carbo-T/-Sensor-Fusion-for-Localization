@@ -51,11 +51,11 @@ IMUPreIntegrator::IMUPreIntegrator(const YAML::Node& node) {
     Q_.block<3, 3>(INDEX_R_ACC_PREV, INDEX_R_ACC_PREV) = COV.RANDOM_WALK.ACCEL * Eigen::Matrix3d::Identity();
     Q_.block<3, 3>(INDEX_R_GYR_PREV, INDEX_R_GYR_PREV) = COV.RANDOM_WALK.GYRO * Eigen::Matrix3d::Identity();
 
-    // c. process equation, state propagation:
+    // c. process equation, state propagation:f13 f25
     F_.block<3, 3>(INDEX_ALPHA,  INDEX_BETA) =  Eigen::Matrix3d::Identity();
     F_.block<3, 3>(INDEX_THETA,   INDEX_B_G) = -Eigen::Matrix3d::Identity();
 
-    // d. process equation, noise input:
+    // d. process equation, noise input:b22, b45, b24, b56
     B_.block<3, 3>(INDEX_THETA, INDEX_M_GYR_PREV) = B_.block<3, 3>(INDEX_THETA, INDEX_M_GYR_CURR) = 0.50 * Eigen::Matrix3d::Identity();
     B_.block<3, 3>(INDEX_B_A, INDEX_R_ACC_PREV) = B_.block<3, 3>(INDEX_B_G, INDEX_R_GYR_PREV) = Eigen::Matrix3d::Identity();
 }
@@ -225,40 +225,80 @@ void IMUPreIntegrator::UpdateState(void) {
     );
 
     //
-    // TODO: a. update mean:
+    // TODO: a. update mean:中值积分
     //
     // 1. get w_mid:
+    w_mid = 0.5 * (prev_w + curr_w);
+
     // 2. update relative orientation, so3:
+    prev_theta_ij = state.theta_ij_;
+    d_theta_ij = Sophus::SO3d::exp(w_mid * T);
+    state.theta_ij_ = state.theta_ij_ * d_theta_ij;
+    curr_theta_ij = state.theta_ij_;
+
     // 3. get a_mid:
+    a_mid = 0.5 * (prev_theta_ij * prev_a + curr_theta_ij * curr_a);
+
     // 4. update relative translation:
+    state.alpha_ij_ = state.alpha_ij_ + state.beta_ij_* T + 0.5 * a_mid * T * T;
+
     // 5. update relative velocity:
+    state.beta_ij_ = state.beta_ij_ + a_mid * T;
 
     //
     // TODO: b. update covariance:
     //
-    // 1. intermediate results:
+    // 1. intermediate results:简化方程
+    dR_inv = d_theta_ij.inverse().matrix();//(I-[w]xdt)~~dtheta^-1
+    prev_R = prev_theta_ij.matrix();//Rk
+    curr_R = curr_theta_ij.matrix();//Rk+1
+    prev_R_a_hat = prev_R * Sophus::SO3d::hat(prev_a);//Rk[ak-bak]x
+    curr_R_a_hat = curr_R * Sophus::SO3d::hat(curr_a);//Rk+1[ak+1 - bak]x
 
     //
-    // TODO: 2. set up F:
+    // TODO: 2. set up F:变量相关矩阵
     //
-    // F12 & F32:
-    // F14 & F34:
-    // F15 & F35:
-    // F22:
+    // r: alpha    theta   beta    ba  bg
+    // c: alpha    theta   beta    ba  bg
+    // F12 & F32:第二列
+    F_.block<3, 3>(INDEX_ALPHA, INDEX_THETA) = -0.25* T * T * (prev_R_a_hat + curr_R_a_hat * dR_inv);
+    F_.block<3, 3>(INDEX_BETA, INDEX_THETA) = -0.5* T * (prev_R_a_hat + curr_R_a_hat * dR_inv);
+    // F14 & F34:第四列
+    F_.block<3, 3>(INDEX_ALPHA, INDEX_B_A) = -0.25* T * T * (prev_R + curr_R);
+    F_.block<3, 3>(INDEX_BETA, INDEX_B_A) = -0.5* T * (prev_R + curr_R);
+    // F15 & F35:第五列
+    F_.block<3, 3>(INDEX_ALPHA, INDEX_B_G) = 0.25* T * T * T * curr_R_a_hat;
+    F_.block<3, 3>(INDEX_BETA, INDEX_B_G) = 0.5* T * T * curr_R_a_hat;
+    // F22:对角
+    F_.block<3, 3>(INDEX_THETA, INDEX_THETA) = -Sophus::SO3d::hat(w_mid)* T;
 
     //
     // TODO: 3. set up G:
     //
+    // r: alpha    theta   beta    ba  bg
+    // c: ak wk ak+1 wk+1 nba nbw
     // G11 & G31:
+    B_.block<3, 3>(INDEX_ALPHA, INDEX_M_ACC_PREV) = 0.25* T * T * prev_R;
+    B_.block<3, 3>(INDEX_BETA, INDEX_M_ACC_PREV) = 0.5 * prev_R;
     // G12 & G32:
+    B_.block<3, 3>(INDEX_ALPHA, INDEX_M_GYR_PREV) = -0.125* T * T * T * curr_R_a_hat;
+    B_.block<3, 3>(INDEX_BETA, INDEX_M_GYR_PREV) = -0.25* T * T * curr_R_a_hat;
     // G13 & G33:
+    B_.block<3, 3>(INDEX_ALPHA, INDEX_M_ACC_CURR) = 0.25* T * T * curr_R;
+    B_.block<3, 3>(INDEX_BETA, INDEX_M_ACC_CURR) = 0.5* T * curr_R;
     // G14 & G34:
+    B_.block<3, 3>(INDEX_ALPHA, INDEX_M_GYR_CURR) = -0.125* T * T * T * curr_R_a_hat;
+    B_.block<3, 3>(INDEX_BETA, INDEX_M_GYR_CURR) = -0.25* T * T * curr_R_a_hat;
 
     // TODO: 4. update P_:
+    MatrixF F = MatrixF::Identity() + T * F_;
+    MatrixB B = T * B_;
+    P_ = F * P_ * F.transpose() + B * Q_ * B.transpose();
 
-    // 
+    //
     // TODO: 5. update Jacobian:
     //
+    J_ = F * J_;
 }
 
 } // namespace lidar_localization

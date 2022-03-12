@@ -485,6 +485,7 @@ Eigen::MatrixXd G2oGraphOptimizer::CalculateDiagMatrix(Eigen::VectorXd noise) {
     return information_matrix;
 }
 
+// 对角信息矩阵 I * (1/noise)
 Eigen::MatrixXd G2oGraphOptimizer::CalculateSe3EdgeInformationMatrix(Eigen::VectorXd noise) {
     Eigen::MatrixXd information_matrix = Eigen::MatrixXd::Identity(6, 6);
     information_matrix = CalculateDiagMatrix(noise);
