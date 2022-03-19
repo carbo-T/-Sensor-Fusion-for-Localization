@@ -24,9 +24,12 @@ public:
   static const int INDEX_R = 15;
 
   FactorPRVAGMarginalization(void) {
+    // H  15 15   b 15
+    //    15 15     15
     H_ = Eigen::MatrixXd::Zero(30, 30);
     b_ = Eigen::VectorXd::Zero(30);
 
+    // J  15*15   e 15*1
     J_ = Eigen::MatrixXd::Zero(15, 15);
     e_ = Eigen::VectorXd::Zero(15);
   }
@@ -45,14 +48,16 @@ public:
     const Eigen::MatrixXd &J_m = jacobians.at(0);
 
     //
-    // TODO: Update H:
+    // TODO: Update H: Jt *sig* J
     //
     // a. H_mm:
+    H_.block<15,15>(INDEX_M, INDEX_M) += J_m.transpose() * J_m;
 
     //
-    // TODO: Update b:
+    // TODO: Update b: -Jt *sig* res
     //
     // a. b_m:
+    b_.block<15,1>(INDEX_M, 0) += J_m.transpose() * residuals;
   }
 
   void SetResRelativePose(
@@ -72,17 +77,22 @@ public:
     //
     // TODO: Update H:
     //
-    // a. H_mm:
+    H_.block<15,15>(INDEX_M, INDEX_M) += J_m.transpose() * J_m;
     // b. H_mr:
+    H_.block<15,15>(INDEX_M, INDEX_R) += J_m.transpose() * J_r;
     // c. H_rm:
+    H_.block<15,15>(INDEX_R, INDEX_M) += J_r.transpose() * J_m;
     // d. H_rr:
+    H_.block<15,15>(INDEX_R, INDEX_R) += J_r.transpose() * J_r;
 
 
     //
     // TODO: Update b:
     //
     // a. b_m:
+    b_.block<15,1>(INDEX_M, 0) += J_m.transpose() * residuals;
     // a. b_r:
+    b_.block<15,1>(INDEX_R, 0) += J_r.transpose() * residuals;
   }
 
   void SetResIMUPreIntegration(
@@ -103,22 +113,60 @@ public:
     // TODO: Update H:
     //
     // a. H_mm:
+    H_.block<15,15>(INDEX_M, INDEX_M) += J_m.transpose() * J_m;
     // b. H_mr:
+    H_.block<15,15>(INDEX_M, INDEX_R) += J_m.transpose() * J_r;
     // c. H_rm:
+    H_.block<15,15>(INDEX_R, INDEX_M) += J_r.transpose() * J_m;
     // d. H_rr:
+    H_.block<15,15>(INDEX_R, INDEX_R) += J_r.transpose() * J_r;
 
 
     //
     // Update b:
     //
     // a. b_m:
+    b_.block<15,1>(INDEX_M, 0) += J_m.transpose() * residuals;
     // a. b_r:
+    b_.block<15,1>(INDEX_R, 0) += J_r.transpose() * residuals;
   }
 
   void Marginalize(
     const double *raw_param_r_0
   ) {
     // TODO: implement marginalization logic
+    // 保存x0
+    Eigen::Map<const Eigen::Matrix<double, 15, 1>> x_0(raw_param_r_0);
+    x_0_ = x_0;
+
+    // 划分矩阵，便于表述
+    const Eigen::MatrixXd &H_mm = H_.block<15, 15>(INDEX_M, INDEX_M);
+    const Eigen::MatrixXd &H_mr = H_.block<15, 15>(INDEX_M, INDEX_R);
+    const Eigen::MatrixXd &H_rm = H_.block<15, 15>(INDEX_R, INDEX_M);
+    const Eigen::MatrixXd &H_rr = H_.block<15, 15>(INDEX_R, INDEX_R);
+
+    const Eigen::VectorXd &b_m = b_.block<15, 1>(INDEX_M, 0);
+    const Eigen::VectorXd &b_r = b_.block<15, 1>(INDEX_R, 0);
+
+    // 先验因子
+    Eigen::MatrixXd H_mm_inv = H_mm.inverse();
+    Eigen::MatrixXd H_marginalized = H_rr - H_rm * H_mm_inv * H_mr;
+    Eigen::MatrixXd b_marginalized = b_r - H_rm * H_mm_inv * b_m;
+
+    // 特征分解，计算残差与雅可比
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes(H_marginalized);
+    Eigen::VectorXd S = Eigen::VectorXd(
+      (saes.eigenvalues().array() > 1.0e-5).select(saes.eigenvalues().array(), 0)
+    );
+    Eigen::VectorXd S_inv = Eigen::VectorXd(
+      (saes.eigenvalues().array() > 1.0e-5).select(saes.eigenvalues().array().inverse(), 0)
+    );
+
+    Eigen::VectorXd S_sqrt = S.cwiseSqrt();
+    Eigen::VectorXd S_inv_sqrt = S_inv.cwiseSqrt();
+
+    J_ = S_sqrt.asDiagonal() * saes.eigenvectors().transpose();
+    e_ = S_inv_sqrt.asDiagonal() * saes.eigenvectors().transpose() * b_marginalized;
   }
 
   virtual bool Evaluate(double const *const *parameters, double *residuals, double **jacobians) const {	
@@ -129,8 +177,10 @@ public:
     Eigen::VectorXd dx = x - x_0_;
 
     //
-    // TODO: compute residual:
+    // TODO: compute residual:一阶泰勒近似
     //
+    Eigen::Map<Eigen::Matrix<double, 15, 1>> residual_(residuals);
+    residual_ = e_ + J_ * dx;
 
     //
     // TODO: compute jacobian:
@@ -138,6 +188,9 @@ public:
     if ( jacobians ) {
       if ( jacobians[0] ) {
         // implement computing:
+        Eigen::Map<Eigen::Matrix<double, 15, 15, Eigen::RowMajor>> jacobian_(jacobians[0]);
+        jacobian_.setZero();
+        jacobian_ = J_;
       }
     }
 

@@ -52,10 +52,19 @@ public:
     //
     // TODO: get square root of information matrix:
     //
+    Eigen::Matrix<double, 6, 6> sqrt_info = Eigen::LLT<Eigen::Matrix<double, 6, 6>>(I_).matrixL().transpose();
 
     //
     // TODO: compute residual:
     //
+    Eigen::Map<Eigen::Matrix<double, 6, 1>> residual_(residuals);
+    residual_.block<3, 1>(INDEX_P, 0) = pos - pos_prior;
+    residual_.block<3, 1>(INDEX_R, 0) = (ori*ori_prior.inverse()).log();
+
+    //
+    // TODO: correct residual by square root of information matrix:
+    //
+    residual_ = sqrt_info * residual_;
 
     //
     // TODO: compute jacobians:
@@ -63,12 +72,16 @@ public:
     if ( jacobians ) {
       if ( jacobians[0] ) {
         // implement jacobian computing:
+        Eigen::Map<Eigen::Matrix<double, 6, 15, Eigen::RowMajor>> J_PR(jacobians[0]);
+        J_PR.setZero();
+
+        J_PR.block<3,3>(INDEX_P, INDEX_P) = Eigen::Matrix3d::Identity();
+
+        J_PR.block<3,3>(INDEX_R, INDEX_R) = JacobianRInv(residual_.block<3, 1>(INDEX_R, 0))*ori_prior.matrix();
+      
+        // J_PR = sqrt_info * J_PR;
       }
     }
-
-    //
-    // TODO: correct residual by square root of information matrix:
-    //
 		
     return true;
   }
@@ -82,10 +95,14 @@ private:
       if ( theta > 1e-5 ) {
           Eigen::Vector3d k = w.normalized();
           Eigen::Matrix3d K = Sophus::SO3d::hat(k);
-          
-          J_r_inv = J_r_inv 
-                    + 0.5 * K
-                    + (1.0 - (1.0 + std::cos(theta)) * theta / (2.0 * std::sin(theta))) * K * K;
+          double theta_half = 0.5 * theta;
+          double cot_theta = 1.0 / tan(theta_half);
+
+          J_r_inv = theta_half * cot_theta * J_r_inv + (1.0 - theta_half * cot_theta) * k * k.transpose() + theta_half * K;
+
+          // J_r_inv = J_r_inv 
+          //           + 0.5 * K
+          //           + (1.0 - (1.0 + std::cos(theta)) * theta / (2.0 * std::sin(theta))) * K * K;
       }
 
       return J_r_inv;
