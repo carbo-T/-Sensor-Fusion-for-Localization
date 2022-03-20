@@ -254,6 +254,7 @@ bool CeresSlidingWindow::Optimize() {
             ceres::LocalParameterization *local_parameterization = new sliding_window::ParamPRVAG();
 
             // TODO: add parameter block:
+            problem.AddParameterBlock(target_key_frame.prvag, 15, local_parameterization);
         }
 
         // TODO: add residual blocks:
@@ -302,6 +303,8 @@ bool CeresSlidingWindow::Optimize() {
             residual_blocks_.map_matching_pose.pop_front();
             residual_blocks_.relative_pose.pop_front();
             residual_blocks_.imu_pre_integration.pop_front();
+
+            LOG(INFO) << "marginalization";
         }
 
         // TODO: b.2. map matching pose constraint:
@@ -314,7 +317,12 @@ bool CeresSlidingWindow::Optimize() {
                 );
 
                 // TODO: add map matching factor into sliding window
-            }            
+                problem.AddResidualBlock(
+                    factor_map_matching_pose,
+                    NULL,
+                    key_frame.prvag);
+            }
+            LOG(INFO) << "map matching";
         }
 
         // TODO: b.3. relative pose constraint:
@@ -328,7 +336,12 @@ bool CeresSlidingWindow::Optimize() {
                 );
 
                 // TODO: add relative pose factor into sliding window
+                // problem.AddResidualBlock(
+                //     factor_relative_pose,
+                //     NULL,
+                //     key_frame_i.prvag, key_frame_j.prvag);
             }
+            LOG(INFO) << "relative constrains";
         }
 
         // TODO: b.4. IMU pre-integration constraint
@@ -342,7 +355,12 @@ bool CeresSlidingWindow::Optimize() {
                 );
 
                 // TODO: add IMU factor into sliding window
+                problem.AddResidualBlock(
+                    factor_imu_pre_integration,
+                    NULL,
+                    key_frame_i.prvag, key_frame_j.prvag);
             }
+            LOG(INFO) << "imu preintegration";
         }
 
         // solve:
@@ -359,6 +377,10 @@ bool CeresSlidingWindow::Optimize() {
                   << "Cost Reduced: " << summary.initial_cost - summary.final_cost << std::endl
                   << summary.BriefReport() << std::endl
                   << std::endl;
+        // if(summary.initial_cost - summary.final_cost < 1e-10)
+        // {
+        //     return false;
+        // }
         
         return true;
     }

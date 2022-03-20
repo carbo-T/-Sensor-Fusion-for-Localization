@@ -67,11 +67,6 @@ public:
     residual_.block<3, 1>(INDEX_R, 0) = (ori_ij.inverse()*(ori_i.inverse()*ori_j)).log();
 
     //
-    // TODO: correct residual by square root of information matrix:
-    //
-    residual_ = sqrt_info * residual_;
-
-    //
     // TODO: compute jacobians:
     //
     if ( jacobians ) {
@@ -99,6 +94,10 @@ public:
         J_PR_j.block<3,3>(INDEX_R, INDEX_R) = jr_inv*ori_ij.matrix();
       }
     }
+    //
+    // TODO: correct residual by square root of information matrix:
+    //
+    residual_ = sqrt_info * residual_;
 
     return true;
   }
@@ -115,11 +114,11 @@ private:
           double theta_half = 0.5 * theta;
           double cot_theta = 1.0 / tan(theta_half);
 
-          J_r_inv = theta_half * cot_theta * J_r_inv + (1.0 - theta_half * cot_theta) * k * k.transpose() + theta_half * K;
+          // J_r_inv = theta_half * cot_theta * J_r_inv + (1.0 - theta_half * cot_theta) * k * k.transpose() + theta_half * K;
 
-          // J_r_inv = J_r_inv 
-          //           + 0.5 * K
-          //           + (1.0 - (1.0 + std::cos(theta)) * theta / (2.0 * std::sin(theta))) * K * K;
+          J_r_inv = J_r_inv 
+                    + 0.5 * K
+                    + (1.0 - (1.0 + std::cos(theta)) * theta / (2.0 * std::sin(theta))) * K * K;
       }
 
       return J_r_inv;

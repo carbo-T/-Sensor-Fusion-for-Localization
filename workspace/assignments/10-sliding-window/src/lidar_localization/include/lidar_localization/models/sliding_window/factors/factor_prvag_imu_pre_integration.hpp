@@ -91,11 +91,6 @@ public:
     residual_.block<3, 1>(INDEX_G, 0) = b_g_j - b_g_i;
 
     //
-    // TODO: correct residual by square root of information matrix:
-    //
-    residual_ = sqrt_info * residual_;
-
-    //
     // TODO: compute jacobians:预积分雅可比
     //
     if ( jacobians ) {
@@ -123,7 +118,7 @@ public:
 
         // b. residual, orientation:
         J_PRVAG_i.block<3,3>(INDEX_R, INDEX_R) = -jr_inv * ori_j.inverse().matrix()*ori_i.matrix();
-        J_PRVAG_i.block<3,3>(INDEX_R, INDEX_G) = -jr_inv * Sophus::SO3d::exp(residual_.block<3, 1>(INDEX_R, 0)).matrix().inverse() * JacobianR(dq_dbg * (b_g_i - m_.block<3,1>(INDEX_G, 0))) * dq_dbg;
+        J_PRVAG_i.block<3,3>(INDEX_R, INDEX_G) = -jr_inv * Sophus::SO3d::exp(residual_.block<3, 1>(INDEX_R, 0)).matrix().inverse() * dq_dbg;
 
         // c. residual, velocity:
         J_PRVAG_i.block<3,3>(INDEX_V, INDEX_R) = Sophus::SO3d::hat(ori_i.inverse().matrix()*(vel_j-vel_i+g_*T_));
@@ -162,6 +157,10 @@ public:
         // J_PRVAG_j = sqrt_info * J_PRVAG_j;
       }
     }
+    //
+    // TODO: correct residual by square root of information matrix:
+    //
+    residual_ = sqrt_info * residual_;
     
     return true;
   }
@@ -178,11 +177,11 @@ private:
           double theta_half = 0.5 * theta;
           double cot_theta = 1.0 / tan(theta_half);
 
-          J_r_inv = theta_half * cot_theta * J_r_inv + (1.0 - theta_half * cot_theta) * k * k.transpose() + theta_half * K;
+          // J_r_inv = theta_half * cot_theta * J_r_inv + (1.0 - theta_half * cot_theta) * k * k.transpose() + theta_half * K;
 
-          // J_r_inv = J_r_inv 
-          //           + 0.5 * K
-          //           + (1.0 - (1.0 + std::cos(theta)) * theta / (2.0 * std::sin(theta))) * K * K;
+          J_r_inv = J_r_inv 
+                    + 0.5 * K
+                    + (1.0 - (1.0 + std::cos(theta)) * theta / (2.0 * std::sin(theta))) * K * K;
       }
 
       return J_r_inv;
