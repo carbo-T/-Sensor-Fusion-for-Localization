@@ -235,6 +235,7 @@ bool DataPretreatFlow::TransformData() {
     gnss_pose_(0,3) = current_gnss_data_.local_E;
     gnss_pose_(1,3) = current_gnss_data_.local_N;
     gnss_pose_(2,3) = current_gnss_data_.local_U;
+    Eigen::Vector3f curr_gnss(current_gnss_data_.local_E,current_gnss_data_.local_N,current_gnss_data_.local_U);
     // get orientation from IMU:
     gnss_pose_.block<3,3>(0,0) = current_imu_data_.GetOrientationMatrix();
     // this is lidar pose in GNSS/map frame:
@@ -248,13 +249,14 @@ bool DataPretreatFlow::TransformData() {
     else
     {
         dt = current_gnss_data_.time - g_last_time;
-        Eigen::Vector3f local_vel = current_imu_data_.GetOrientationMatrix().transpose() * (gnss_pose_.block<3, 1>(0, 3) - last_enu) / dt;
-        current_velocity_data_.linear_velocity.x = local_vel.x();
-        current_velocity_data_.linear_velocity.y = local_vel.y();
-        current_velocity_data_.linear_velocity.z = local_vel.z();
+        Eigen::Vector3f local_vel = current_imu_data_.GetOrientationMatrix().transpose() * (curr_gnss - last_enu) / dt;
+        current_velocity_data_.linear_velocity.x = local_vel.norm();
+        current_velocity_data_.linear_velocity.y = 0.0;
+        current_velocity_data_.linear_velocity.z = 0.0;
     }
     char buf[255];
-    sprintf(buf, "time: %.2f, pos: %.7f %.7f %.7f\nang:%.3f %.3f %.3f, lin:%.3f %.3f %.3f\n", dt, last_enu.x(), last_enu.y(), last_enu.z(),
+    sprintf(buf, "time: %.2f, pos: %.3f %.3f %.3f, %.3f %.3f %.3f  \nang:%.3f %.3f %.3f, lin:%.3f %.3f %.3f\n", dt, last_enu.x(), last_enu.y(), last_enu.z(),
+            curr_gnss.x(), curr_gnss.y(), curr_gnss.z(),
             current_velocity_data_.angular_velocity.x, current_velocity_data_.angular_velocity.y, current_velocity_data_.angular_velocity.z,
             current_velocity_data_.linear_velocity.x, current_velocity_data_.linear_velocity.y, current_velocity_data_.linear_velocity.z);
     std::cout << buf << std::endl;

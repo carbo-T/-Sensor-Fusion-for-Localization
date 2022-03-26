@@ -674,7 +674,7 @@ void ErrorStateKalmanFilter::CorrectErrorEstimationPoseVel(
   // //添加yz约束，即观测yz为0
   Eigen::Vector3d v_b_new = {v_b.x(), 0, 0};
   Eigen::Vector3d dv =  pose_.block<3, 3>(0, 0).transpose()*vel_ - v_b_new;//_constrained;
-  LOG(WARNING) <<"dvel: "<<dv.x()<<", "<<dv.y()<<", "<<dv.z();
+  // LOG(WARNING) <<"dvel: "<<dv.x()<<", "<<dv.y()<<", "<<dv.z();
   if(dvel_out.is_open())
     dvel_out<<dv.x()<<", "<<dv.y()<<", "<<dv.z()<<std::endl;
   Eigen::Matrix3d dR = T_nb.block<3, 3>(0, 0).transpose() * pose_.block<3, 3>(0, 0);
