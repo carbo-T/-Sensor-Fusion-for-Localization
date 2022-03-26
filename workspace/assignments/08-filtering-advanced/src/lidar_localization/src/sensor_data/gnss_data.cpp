@@ -9,19 +9,19 @@
 #include <ostream>
 
 //静态成员变量必须在类外初始化
-double lidar_localization::GNSSData::origin_latitude = 0.0;
-double lidar_localization::GNSSData::origin_longitude = 0.0;
-double lidar_localization::GNSSData::origin_altitude = 0.0;
+double lidar_localization::GNSSData::origin_longitude = 114.1791145;
+double lidar_localization::GNSSData::origin_latitude = 22.3009937;
+double lidar_localization::GNSSData::origin_altitude = 14.05;
 bool lidar_localization::GNSSData::origin_position_inited = false;
 GeographicLib::LocalCartesian lidar_localization::GNSSData::geo_converter;
 
 namespace lidar_localization {
 void GNSSData::InitOriginPosition() {
-    geo_converter.Reset(latitude, longitude, altitude);
+    geo_converter.Reset(origin_latitude, origin_longitude, origin_altitude);
 
-    origin_latitude = latitude;
-    origin_longitude = longitude;
-    origin_altitude = altitude;
+    // origin_longitude = longitude;
+    // origin_latitude = latitude;
+    // origin_altitude = altitude;
 
     origin_position_inited = true;
 }
@@ -56,11 +56,11 @@ bool GNSSData::SyncData(std::deque<GNSSData>& UnsyncedData, std::deque<GNSSData>
             UnsyncedData.pop_front();
             continue;
         }
-        if (sync_time - UnsyncedData.front().time > 0.2) {
+        if (sync_time - UnsyncedData.front().time > 2.0) {
             UnsyncedData.pop_front();
             return false;
         }
-        if (UnsyncedData.at(1).time - sync_time > 0.2) {
+        if (UnsyncedData.at(1).time - sync_time > 2.0) {
             UnsyncedData.pop_front();
             return false;
         }
