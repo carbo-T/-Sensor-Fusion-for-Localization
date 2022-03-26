@@ -8,10 +8,17 @@
 #include "glog/logging.h"
 #include "lidar_localization/global_defination/global_defination.h"
 
+
 namespace lidar_localization {
+
+#ifndef HK_DATA
+#define HK_DATA (1)
+#endif
+
 DataPretreatFlow::DataPretreatFlow(ros::NodeHandle& nh, std::string cloud_topic) {
     // subscriber
     // a. velodyne measurement:
+    #if HK_DATA==0
     cloud_sub_ptr_ = std::make_shared<CloudSubscriber>(nh, "/kitti/velo/pointcloud", 100000);
     // b. OXTS IMU:
     imu_sub_ptr_ = std::make_shared<IMUSubscriber>(nh, "/kitti/oxts/imu", 1000000);
@@ -20,6 +27,12 @@ DataPretreatFlow::DataPretreatFlow(ros::NodeHandle& nh, std::string cloud_topic)
     // d. OXTS GNSS:
     gnss_sub_ptr_ = std::make_shared<GNSSSubscriber>(nh, "/kitti/oxts/gps/fix", 1000000);
     lidar_to_imu_ptr_ = std::make_shared<TFListener>(nh, "/imu_link", "/velo_link");
+    #else
+    cloud_sub_ptr_ = std::make_shared<CloudSubscriber>(nh, "/velodyne_points", 100000);
+    imu_sub_ptr_ = std::make_shared<IMUSubscriber>(nh, "/imu/data", 1000000);
+    gnss_sub_ptr_ = std::make_shared<GNSSSubscriber>(nh, "/navsat/fix", 1000000);
+    lidar_to_imu_ptr_ = std::make_shared<TFListener>(nh, "/imu", "/velo_link");
+    #endif
 
     // publisher
     cloud_pub_ptr_ = std::make_shared<CloudPublisher>(nh, cloud_topic, "/velo_link", 100);
@@ -30,19 +43,23 @@ DataPretreatFlow::DataPretreatFlow(ros::NodeHandle& nh, std::string cloud_topic)
 }
 
 bool DataPretreatFlow::Run() {
+    // LOG(INFO) << "read data";
+
     if (!ReadData())
         return false;
-
     if (!InitCalibration()) 
         return false;
-
+//  LOG(INFO) << "init calib";
     if (!InitGNSS())
         return false;
+//  LOG(INFO) << "init gnss";
 
     while(HasData()) {
+//  LOG(INFO) << "has data";
         if (!ValidData())
             continue;
 
+        // LOG(INFO) << "valid data";
         TransformData();
         PublishData();
     }
@@ -58,8 +75,11 @@ bool DataPretreatFlow::ReadData() {
     // fetch lidar measurements from buffer:
     cloud_sub_ptr_->ParseData(cloud_data_buff_);
     imu_sub_ptr_->ParseData(unsynced_imu_);
+    #if HK_DATA==0
     velocity_sub_ptr_->ParseData(unsynced_velocity_);
+    #endif
     gnss_sub_ptr_->ParseData(unsynced_gnss_);
+    // LOG(INFO)<<"ugnss: "<<unsynced_gnss_.size();
 
     if (cloud_data_buff_.size() == 0)
         return false;
@@ -70,14 +90,23 @@ bool DataPretreatFlow::ReadData() {
     // find the two closest measurement around lidar measurement time
     // then use linear interpolation to generate synced measurement:
     bool valid_imu = IMUData::SyncData(unsynced_imu_, imu_data_buff_, cloud_time);
+    #if HK_DATA==0
     bool valid_velocity = VelocityData::SyncData(unsynced_velocity_, velocity_data_buff_, cloud_time);
+    #endif
+
     bool valid_gnss = GNSSData::SyncData(unsynced_gnss_, gnss_data_buff_, cloud_time);
 
     // only mark lidar as 'inited' when all the three sensors are synced:
     static bool sensor_inited = false;
     if (!sensor_inited) {
+        #if HK_DATA==0
         if (!valid_imu || !valid_velocity || !valid_gnss) {
+        #else
+        // gps 数据频率变化，kitti 10Hz frameid imu_link，hk_data 1Hz frameid gps，暂时取消gps合法性校验
+        if (!valid_imu || !valid_gnss) {
+        #endif
             cloud_data_buff_.pop_front();
+            // LOG(INFO)<<(valid_imu?"imu valid ":"imu invalid ")<<(valid_gnss?"gnss valid ":"gnss invalid ")<<unsynced_gnss_.size();
             return false;
         }
         sensor_inited = true;
@@ -111,13 +140,29 @@ bool DataPretreatFlow::InitGNSS() {
 
 bool DataPretreatFlow::HasData() {
     if (cloud_data_buff_.size() == 0)
+    {
+        // LOG(WARNING) <<"no cloud";
         return false;
+    }
     if (imu_data_buff_.size() == 0)
+    {
+        // LOG(WARNING) <<"no imu";
         return false;
+    }
+
+    #if HK_DATA==0
     if (velocity_data_buff_.size() == 0)
+    {
+        LOG(WARNING) <<"no vel";
         return false;
+    }
+    #endif
+
     if (gnss_data_buff_.size() == 0)
+    {
+        // LOG(WARNING) <<"no gnss";
         return false;
+    }
 
     return true;
 }
@@ -125,13 +170,20 @@ bool DataPretreatFlow::HasData() {
 bool DataPretreatFlow::ValidData() {
     current_cloud_data_ = cloud_data_buff_.front();
     current_imu_data_ = imu_data_buff_.front();
+    #if HK_DATA==0
     current_velocity_data_ = velocity_data_buff_.front();
+    #endif
     current_gnss_data_ = gnss_data_buff_.front();
 
     double diff_imu_time = current_cloud_data_.time - current_imu_data_.time;
-    double diff_velocity_time = current_cloud_data_.time - current_velocity_data_.time;
     double diff_gnss_time = current_cloud_data_.time - current_gnss_data_.time;
+    #if HK_DATA==0
+    double diff_velocity_time = current_cloud_data_.time - current_velocity_data_.time;
     if (diff_imu_time < -0.05 || diff_velocity_time < -0.05 || diff_gnss_time < -0.05) {
+    #else
+    // LOG(WARNING)<<"cloud imu gnss t: "<<current_cloud_data_.time-1.55645e9<<", "<<current_imu_data_.time-1.55645e9<<", "<<current_gnss_data_.time-1.55645e9;
+    if (diff_imu_time < -0.05) {
+    #endif
         cloud_data_buff_.pop_front();
         return false;
     }
@@ -141,20 +193,27 @@ bool DataPretreatFlow::ValidData() {
         return false;
     }
 
+    #if HK_DATA==0
     if (diff_velocity_time > 0.05) {
         velocity_data_buff_.pop_front();
         return false;
     }
+    #endif
 
     if (diff_gnss_time > 0.05) {
+        // LOG(INFO)<<"diff gnss:"<<diff_gnss_time;
         gnss_data_buff_.pop_front();
         return false;
     }
 
     cloud_data_buff_.pop_front();
     imu_data_buff_.pop_front();
+    #if HK_DATA==0
     velocity_data_buff_.pop_front();
-    gnss_data_buff_.pop_front();
+    #endif
+    // if(gnss_data_buff_.size()>2){
+        gnss_data_buff_.pop_front();
+    // }
 
     return true;
 }
@@ -172,11 +231,13 @@ bool DataPretreatFlow::TransformData() {
     // this is lidar pose in GNSS/map frame:
     gnss_pose_ *= lidar_to_imu_;
 
-    // this is lidar velocity:
+    #if HK_DATA==0
+    // this is lidar velocity:s
     current_velocity_data_.TransformCoordinate(lidar_to_imu_);
     // motion compensation for lidar measurements:
     distortion_adjust_ptr_->SetMotionInfo(0.1, current_velocity_data_);
     distortion_adjust_ptr_->AdjustCloud(current_cloud_data_.cloud_ptr, current_cloud_data_.cloud_ptr);
+    #endif
 
     return true;
 }
@@ -184,6 +245,7 @@ bool DataPretreatFlow::TransformData() {
 bool DataPretreatFlow::PublishData() {
     cloud_pub_ptr_->Publish(current_cloud_data_.cloud_ptr, current_cloud_data_.time);
     gnss_pub_ptr_->Publish(gnss_pose_, current_gnss_data_.time);
+    // LOG(WARNING)<<"cloud imu gnss t: "<<current_cloud_data_.time-1.55645e9<<", "<<current_gnss_data_.time-1.55645e9;
 
     return true;
 }

@@ -8,19 +8,19 @@
 #include "glog/logging.h"
 
 //静态成员变量必须在类外初始化
-double lidar_localization::GNSSData::origin_longitude = 0.0;
-double lidar_localization::GNSSData::origin_latitude = 0.0;
-double lidar_localization::GNSSData::origin_altitude = 0.0;
+double lidar_localization::GNSSData::origin_longitude = 114.1791145;
+double lidar_localization::GNSSData::origin_latitude = 22.3009937;
+double lidar_localization::GNSSData::origin_altitude = 14.05;
 bool lidar_localization::GNSSData::origin_position_inited = false;
 GeographicLib::LocalCartesian lidar_localization::GNSSData::geo_converter;
 
 namespace lidar_localization {
 void GNSSData::InitOriginPosition() {
-    geo_converter.Reset(latitude, longitude, altitude);
+    geo_converter.Reset(origin_latitude, origin_longitude, origin_altitude);
 
-    origin_longitude = longitude;
-    origin_latitude = latitude;
-    origin_altitude = altitude;
+    // origin_longitude = longitude;
+    // origin_latitude = latitude;
+    // origin_altitude = altitude;
 
     origin_position_inited = true;
 }
@@ -37,24 +37,33 @@ bool GNSSData::SyncData(std::deque<GNSSData>& UnsyncedData, std::deque<GNSSData>
     // 即找到与同步时间相邻的左右两个数据
     // 需要注意的是，如果左右相邻数据有一个离同步时间差值比较大，则说明数据有丢失，时间离得太远不适合做差值
     while (UnsyncedData.size() >= 2) {
-        if (UnsyncedData.front().time > sync_time)
+        if (UnsyncedData.front().time > sync_time){
+            // LOG(INFO)<<"-1 "<<UnsyncedData.front().time-sync_time;
             return false;
+        }
         if (UnsyncedData.at(1).time < sync_time) {
+            // LOG(INFO)<<"0 ";
             UnsyncedData.pop_front();
             continue;
         }
-        if (sync_time - UnsyncedData.front().time > 0.2) {
+        // 新gps帧率1Hz,之前10Hz时取两倍时间0.2s，此时取2s
+        if (sync_time - UnsyncedData.front().time > 2.0) {
+            // LOG(INFO)<<"1 ";
             UnsyncedData.pop_front();
             return false;
         }
-        if (UnsyncedData.at(1).time - sync_time > 0.2) {
+        if (UnsyncedData.at(1).time - sync_time > 2.0) {
+            // LOG(INFO)<<"2 ";
             UnsyncedData.pop_front();
             return false;
         }
         break;
     }
     if (UnsyncedData.size() < 2)
+    {
+        // LOG(INFO)<<"3 ";
         return false;
+    }
 
     GNSSData front_data = UnsyncedData.at(0);
     GNSSData back_data = UnsyncedData.at(1);

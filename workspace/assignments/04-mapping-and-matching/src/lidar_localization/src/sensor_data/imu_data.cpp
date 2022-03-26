@@ -8,6 +8,8 @@
 #include <cmath>
 #include "glog/logging.h"
 
+Eigen::Vector3d g_ = Eigen::Vector3d(0,0,9.78772);
+
 namespace lidar_localization {
 Eigen::Matrix3f IMUData::GetOrientationMatrix() {
     Eigen::Quaterniond q(orientation.w, orientation.x, orientation.y, orientation.z);
@@ -64,6 +66,15 @@ bool IMUData::SyncData(std::deque<IMUData>& UnsyncedData, std::deque<IMUData>& S
     synced_data.orientation.y = front_data.orientation.y * front_scale + back_data.orientation.y * back_scale;
     synced_data.orientation.z = front_data.orientation.z * front_scale + back_data.orientation.z * back_scale;
     synced_data.orientation.w = front_data.orientation.w * front_scale + back_data.orientation.w * back_scale;
+
+    //消除重力影响
+    Eigen::Quaterniond q(synced_data.orientation.w, synced_data.orientation.x, synced_data.orientation.y, synced_data.orientation.z);
+    Eigen::Matrix3d matrix = q.matrix();
+    Eigen::Vector3d aligned_gravity = matrix * g_;
+    synced_data.linear_acceleration.x -= aligned_gravity.x();
+    synced_data.linear_acceleration.y -= aligned_gravity.y();
+    synced_data.linear_acceleration.z -= aligned_gravity.z();
+
     // 线性插值之后要归一化
     synced_data.orientation.Normlize();
 

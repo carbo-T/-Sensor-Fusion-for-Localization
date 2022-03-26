@@ -2,4 +2,10 @@
     <node pkg="rviz"  type="rviz"  name="rviz"  args="-d $(find lidar_localization)/rviz/matching.rviz"></node>
     <node pkg="lidar_localization"  type="data_pretreat_node"  name="data_pretreat_node"  output="screen"></node>
     <node pkg="lidar_localization"  type="matching_node"  name="matching_node"  output="screen"></node>
+
+        <!-- imu->(gps,velo_link) xyzypr -->
+    <node pkg="tf" type="static_transform_publisher" name="imu_velo_link_broadcaster" args="0 0 -0.28 -1.5707963 0 0 /imu /velo_link 10" />
+    <node pkg="tf" type="static_transform_publisher" name="imu_odom_broadcaster" args="0 0 0 0 0 0 /imu /odom 10" />
+    <node pkg="tf" type="static_transform_publisher" name="imu_gps_broadcaster" args="0 0 0 0 0 0 /imu /gps 10" />
+    <node pkg="tf" type="static_transform_publisher" name="velo_broadcaster" args="0 0 0 0 0 0 /velo_link /velodyne 10" />
 </launch>

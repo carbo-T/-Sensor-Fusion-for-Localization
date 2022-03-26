@@ -24,7 +24,7 @@ MatchingFlow::MatchingFlow(ros::NodeHandle& nh) {
     current_scan_pub_ptr_ = std::make_shared<CloudPublisher>(nh, "/current_scan", "/map", 100);
     // d. estimated lidar pose in map frame:
     laser_odom_pub_ptr_ = std::make_shared<OdometryPublisher>(nh, "/laser_localization", "/map", "/lidar", 100);
-    laser_tf_pub_ptr_ = std::make_shared<TFBroadCaster>("/map", "/vehicle_link");
+    laser_tf_pub_ptr_ = std::make_shared<TFBroadCaster>("/map", "/velo_link");
 
     matching_ptr_ = std::make_shared<Matching>();
 }

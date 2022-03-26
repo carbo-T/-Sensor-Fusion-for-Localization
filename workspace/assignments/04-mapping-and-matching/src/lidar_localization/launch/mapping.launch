@@ -5,4 +5,10 @@
     <node pkg="lidar_localization"  type="back_end_node"  name="back_end_node"  output="screen"></node>
     <node pkg="lidar_localization"  type="loop_closing_node"  name="loop_closing_node"  output="screen"></node>
     <node pkg="lidar_localization"  type="viewer_node"  name="viewer_node"  output="screen"></node>
+
+    <!-- imu->(gps,velo_link) xyzypr -->
+    <node pkg="tf" type="static_transform_publisher" name="imu_velo_link_broadcaster" args="0 0 -0.28 -1.5707963 0 0 /imu /velo_link 10" />
+    <node pkg="tf" type="static_transform_publisher" name="imu_gps_broadcaster" args="0 0 0 0 0 0 /imu /odom 10" />
+    <node pkg="tf" type="static_transform_publisher" name="velo_broadcaster" args="0 0 0 0 0 0 /velo_link /velodyne 10" />
+
 </launch>

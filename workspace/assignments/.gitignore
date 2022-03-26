@@ -1,2 +1,12 @@
 image_based_modelling
 ImageBasedModellingEdu
+.catkin_tools
+build
+devel
+install
+logs
+.catkin_workspace
+.vscode/
+slam_data
+*Log*
+/data/**
